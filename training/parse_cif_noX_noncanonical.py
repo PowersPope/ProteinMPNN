@@ -13,18 +13,47 @@ import tempfile
 import subprocess
 
 RES_NAMES = [
-    'ALA','ARG','ASN','ASP','CYS',
-    'GLN','GLU','GLY','HIS','ILE',
-    'LEU','LYS','MET','PHE','PRO',
-    'SER','THR','TRP','TYR','VAL'
+    'ALA','ARG','ASN','ASP','CYS', # L
+    'GLN','GLU','GLY','HIS','ILE', # L
+    'LEU','LYS','MET','PHE','PRO', # L
+    'SER','THR','TRP','TYR','VAL', # L
+    'DAL','DAR','DAN','DAS','DCY', # D
+    'DGL','DGU','DGN','DHI','DIL', # D
+    'DLE','DLY','DME','DPH','DPR', # D
+    'DSE','DTH','DTR','DTY','DVA'  # D
 ]
 
-RES_NAMES_1 = 'ARNDCQEGHILKMFPSTWYV'
+# Init L single AA code
+RES_NAMES_1 = 'ARNDCQEGHILKMFPSTWYV' # L 
+RES_NAMES_2 = RES_NAMES_1.lower() # D version
+RES_NAMES_TOTAL = RES_NAMES_1 + RES_NAMES_2 # Combine into one string
 
-to1letter = {aaa:a for a,aaa in zip(RES_NAMES_1,RES_NAMES)}
-to3letter = {a:aaa for a,aaa in zip(RES_NAMES_1,RES_NAMES)}
+# generate Dictionaries for 1 to three and three to 1 conversion
+to1letter = {aaa:a for a,aaa in zip(RES_NAMES_TOTAL,RES_NAMES)}
+to3letter = {a:aaa for a,aaa in zip(RES_NAMES_TOTAL,RES_NAMES)}
 
 ATOM_NAMES = [
+    ("N", "CA", "C", "O", "CB"), # ala
+    ("N", "CA", "C", "O", "CB", "CG", "CD", "NE", "CZ", "NH1", "NH2"), # arg
+    ("N", "CA", "C", "O", "CB", "CG", "OD1", "ND2"), # asn
+    ("N", "CA", "C", "O", "CB", "CG", "OD1", "OD2"), # asp
+    ("N", "CA", "C", "O", "CB", "SG"), # cys
+    ("N", "CA", "C", "O", "CB", "CG", "CD", "OE1", "NE2"), # gln
+    ("N", "CA", "C", "O", "CB", "CG", "CD", "OE1", "OE2"), # glu
+    ("N", "CA", "C", "O"), # gly
+    ("N", "CA", "C", "O", "CB", "CG", "ND1", "CD2", "CE1", "NE2"), # his
+    ("N", "CA", "C", "O", "CB", "CG1", "CG2", "CD1"), # ile
+    ("N", "CA", "C", "O", "CB", "CG", "CD1", "CD2"), # leu
+    ("N", "CA", "C", "O", "CB", "CG", "CD", "CE", "NZ"), # lys
+    ("N", "CA", "C", "O", "CB", "CG", "SD", "CE"), # met
+    ("N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ"), # phe
+    ("N", "CA", "C", "O", "CB", "CG", "CD"), # pro
+    ("N", "CA", "C", "O", "CB", "OG"), # ser
+    ("N", "CA", "C", "O", "CB", "OG1", "CG2"), # thr
+    ("N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE2", "CE3", "NE1", "CZ2", "CZ3", "CH2"), # trp
+    ("N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ", "OH"), # tyr
+    ("N", "CA", "C", "O", "CB", "CG1", "CG2"), # val
+    # Repeat of above for D 
     ("N", "CA", "C", "O", "CB"), # ala
     ("N", "CA", "C", "O", "CB", "CG", "CD", "NE", "CZ", "NH1", "NH2"), # arg
     ("N", "CA", "C", "O", "CB", "CG", "OD1", "ND2"), # asn
@@ -47,7 +76,7 @@ ATOM_NAMES = [
     ("N", "CA", "C", "O", "CB", "CG1", "CG2") # val
 ]
         
-idx2ra = {(RES_NAMES_1[i],j):(RES_NAMES[i],a) for i in range(20) for j,a in enumerate(ATOM_NAMES[i])}
+idx2ra = {(RES_NAMES_1[i],j):(RES_NAMES[i],a) for i in range(40) for j,a in enumerate(ATOM_NAMES[i])} # Change to 40, since D added
 
 aa2idx = {(r,a):i for r,atoms in zip(RES_NAMES,ATOM_NAMES) 
           for i,a in enumerate(atoms)}
