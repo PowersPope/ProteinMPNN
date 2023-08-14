@@ -76,7 +76,7 @@ ATOM_NAMES = [
     ("N", "CA", "C", "O", "CB", "CG1", "CG2") # val
 ]
         
-idx2ra = {(RES_NAMES_1[i],j):(RES_NAMES[i],a) for i in range(40) for j,a in enumerate(ATOM_NAMES[i])} # Change to 40, since D added
+idx2ra = {(RES_NAMES_TOTAL[i],j):(RES_NAMES[i],a) for i in range(40) for j,a in enumerate(ATOM_NAMES[i])} # Change to 40, since D added
 
 aa2idx = {(r,a):i for r,atoms in zip(RES_NAMES,ATOM_NAMES) 
           for i,a in enumerate(atoms)}
@@ -84,37 +84,69 @@ aa2idx.update({(r,'OXT'):3 for r in RES_NAMES})
 
 
 def writepdb(f, xyz, seq, bfac=None):
+    """
+    Output information
 
-    #f = open(filename,"w")
+    PARAMETERS
+    ----------
+        f : FILE
+            file type
+        xyz : np.array
+            Np matrix holding xyz coordinates
+        seq : str
+            AA seq string
+        bfac : np.array
+            Could be bfac confidence scores, though optional
+
+    RETURN
+    ------
+        np.array
+            Array of all CA atom positions within the sequence
+    """
+    # Open the first element
     f.seek(0)
-    
-    ctr = 1
-    seq = str(seq)
-    L = len(seq)
-    
+    # ctr
+    ctr = 1         # Set ctr
+    seq = str(seq)  # convert seq to string if not already
+    L = len(seq)    # Extract seq length
+
+    # If bfac is None then auto fill in bfac with zeros
+    # size of L 
     if bfac is None:
         bfac = np.zeros((L))
 
+    # init idx list
     idx = []
+    # Loop through range of size L
     for i in range(L):
-        for j,xyz_ij in enumerate(xyz[i]):
+
+        # Within this position i loop through xyz coords
+        for j, xyz_ij in enumerate(xyz[i]):
+            # Create a key of AA in seq at position i and the position of xyz j 
             key = (seq[i],j)
+            # If this isn't in idx2ra then continue
+            # New D amino Acids should be added now
             if key not in idx2ra.keys():
                 continue
+            # If the value is nan and/or sums to greater than 0 skip as well
             if np.isnan(xyz_ij).sum()>0:
                 continue
+
+            # Key is in idx2ra then extract tuple information
             r,a = idx2ra[key]
+
+            # Passed File f write new info to
             f.write ("%-6s%5s %4s %3s %s%4d    %8.3f%8.3f%8.3f%6.2f%6.2f\n"%(
-                    "ATOM", ctr, a, r, 
+                    "ATOM", ctr, a, r,
                     "A", i+1, xyz_ij[0], xyz_ij[1], xyz_ij[2],
                     1.0, bfac[i,j] ) )
+            # Whenever we hit a new CA add position i to idx list
             if a == 'CA':
                 idx.append(i)
+            # Increment ctr to keep track of absolute atom position
             ctr += 1
-            
-    #f.close()
     f.flush()
-    
+
     return np.array(idx)
 
 
