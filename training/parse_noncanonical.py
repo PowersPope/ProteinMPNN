@@ -249,7 +249,7 @@ def main():
         'LEU','LYS','MET','PHE','PRO', # L
         'SER','THR','TRP','TYR','VAL', # L
         'DAL','DAR','DAN','DAS','DCY', # D
-        'DGL','DGU','DGN','DHI','DIL', # D
+        'DGN','DGU','GLY','DHI','DIL', # D
         'DLE','DLY','DME','DPH','DPR', # D
         'DSE','DTH','DTR','DTY','DVA'  # D
     ]
@@ -292,7 +292,7 @@ def main():
         ("N", "CA", "C", "O", "CB", "SG"), # cys
         ("N", "CA", "C", "O", "CB", "CG", "CD", "OE1", "NE2"), # gln
         ("N", "CA", "C", "O", "CB", "CG", "CD", "OE1", "OE2"), # glu
-        ("N", "CA", "C", "O"), # gly
+        ("N", "CA", "C", "O"), # gly 
         ("N", "CA", "C", "O", "CB", "CG", "ND1", "CD2", "CE1", "NE2"), # his
         ("N", "CA", "C", "O", "CB", "CG1", "CG2", "CD1"), # ile
         ("N", "CA", "C", "O", "CB", "CG", "CD1", "CD2"), # leu
