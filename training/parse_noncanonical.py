@@ -11,80 +11,15 @@ import subprocess
 from biopandas.pdb import PandasPdb
 import pandas as pd
 import argparse
-
-def writepdb(f, xyz, seq, bfac=None):
-    """
-    Output information
-
-    PARAMETERS
-    ----------
-        f : FILE
-            file type
-        xyz : np.array
-            Np matrix holding xyz coordinates
-        seq : str
-            AA seq string
-        bfac : np.array
-            Could be bfac confidence scores, though optional
-
-    RETURN
-    ------
-        np.array
-            Array of all CA atom positions within the sequence
-    """
-    # Set the pointer of the file to the beginning
-    f.seek(0)
-
-    ctr = 1         # Set atom absolute position
-    seq = str(seq)  # convert seq to string if not already
-    L = len(seq)    # Extract seq length
-
-    # If bfac is None then auto fill in bfac with zeros
-    # size of L 
-    if bfac is None:
-        bfac = np.zeros((L))
-
-    # init idx list
-    idx = []
-    # Loop through range of size L
-    for i in range(L):
-
-        # Within this position i loop through xyz coords
-        for j, xyz_ij in enumerate(xyz[i]):
-            # Create a key of AA in seq at position i and the position of xyz j 
-            key = (seq[i],j)
-            # If this isn't in idx2ra then continue
-            # New D amino Acids should be added now
-            if key not in idx2ra.keys():
-                continue
-            # If the value is nan and/or sums to greater than 0 skip as well
-            if np.isnan(xyz_ij).sum()>0:
-                continue
-
-            # Key is in idx2ra then extract tuple information
-            r,a = idx2ra[key]
-
-            # Passed File f write new info to
-            f.write ("%-6s%5s %4s %3s %s%4d    %8.3f%8.3f%8.3f%6.2f%6.2f\n"%(
-                    "ATOM", ctr, a, r,
-                    "A", i+1, xyz_ij[0], xyz_ij[1], xyz_ij[2],
-                    1.0, bfac[i,j] ) )
-            # Whenever we hit a new CA add position i to idx list
-            if a == 'CA':
-                idx.append(i)
-            # Increment ctr to keep track of absolute atom position
-            ctr += 1
-    # Flush the contents of the file object/input buffer
-    f.flush()
-
-    return np.array(idx)
+from typing import List
+from tqdm import tqdm
 
 def extract_pdb_info(f:str,
                      to1letter: dict,
                      aa2idx: dict,
                      OUTPUT: str,
                      res_names: list,
-                     ) -> int:
+                     ) -> List[str]:
     """Take in a pdb file and extract xyz, atom type, occupancy, and coordinates
     from the file.
 
@@ -129,8 +64,8 @@ def extract_pdb_info(f:str,
 
     RETURNS
     -------
-    0: int
-        If run was successful
+    seq_all: list
+        list of One letter sequences of the peptides
     """
     # Check f is of type string
     assert isinstance(f, str),"This function was expecting a string path, and not a file object"
@@ -139,6 +74,9 @@ def extract_pdb_info(f:str,
     # Load data into pandas dataframe
     data = PandasPdb().read_pdb(f)
     filename = f.strip('.pdb').split('/')[-1]
+
+    # Sequence holding object
+    seq_all = []
 
     # Load in het and atom dfs
     het = data.df["HETATM"]
@@ -152,9 +90,6 @@ def extract_pdb_info(f:str,
 
     # extra chain information
     chids = set(df_cat.chain_id)
-
-    print(df_cat)
-    print(chids)
 
     # loop through chids
     for id in chids:
@@ -173,7 +108,6 @@ def extract_pdb_info(f:str,
         seq = "".join(
             [to1letter["GLY"] if aaa not in to1letter.keys() else to1letter[aaa] for aaa in temp_unique.residue_name]
         )
-        print(seq)
 
         # If this chain has nothing but elements/unknown current noncanonicals then pass
         if seq == "":
@@ -209,13 +143,6 @@ def extract_pdb_info(f:str,
             if aaa == "GLY" and aa_atom not in ["CA", "N", "O", "C"]:
                 continue
             key = (aaa, aa_atom)
-            # if ctr >= L-10:
-            #     print('resNUM:',row.residue_number)
-            #     print('ctr:', ctr)
-            #     print('length of df:', temp.shape)
-            #     print(row.x_coord)
-            #     print(row.y_coord)
-            #     print(row.z_coord)
             # Extract positional information
             xyz[ctr, aa2idx[key], 0] = row.x_coord
             xyz[ctr, aa2idx[key], 1] = row.y_coord
@@ -240,7 +167,65 @@ def extract_pdb_info(f:str,
         
         torch.save(out_dict, f"{OUT}_{id}.pt")
 
+        # Add seq to seq_all
+        seq_all.append(seq)
+
+    return seq_all
+
+def write_pt_general(f: object, OUTPUT:str, seq:list) -> int:
+    """Write out the general generic monomeric .pt file for training
+
+    PARAMETERS
+    ----------
+    f: file object
+        PDB file
+
+    OUTPUT: str
+        OUTPUT dir path
+
+    seq: list
+        list of one letter string of AAs in the peptide.
+        This works as an input, because the 
+
+    RETURNS
+    -------
+    0: int
+        Zero status exit
+    """
+    # Strip filename path info
+    filename = f.strip(".pdb").split("/")[-1]
+
+    # Combine output and filename to create out name
+    OUT = os.path.join(OUTPUT, filename+".pt")
+
+    # correct seq input
+    if len(seq) == 1:
+        seq = [[seq[0], seq[0]]]
+
+    # Specify hard code contents
+    contents = {
+        'method': 'IN-SILICO',
+        'date': '2023-08-16',
+        'resolution': None,
+        'chains': ['A'],
+        'seq': seq,
+        'id': filename,
+        'asmb_chains': ['A'],
+        'asmb_details': ['author_defined_assembly'],
+        'asmb_method': ['?'],
+        'asmb_ids': ['1'],
+        'asmb_xform0': torch.tensor([[[1., 0., 0., 0.],
+                 [0., 1., 0., 0.],
+                 [0., 0., 1., 0.],
+                 [0., 0., 0., 1.]]]),
+        'tm': torch.tensor([[[1., 1., 0.]]])
+    }
+
+    # write to .pt
+    torch.save(contents, OUT)
+
     return 0
+    
 
 def main():
     """Main function that cycles through a pdb input dir and returns .pt
@@ -250,7 +235,7 @@ def main():
     # Define argument parser
     p = argparse.ArgumentParser("Arguments Needed to Create .pt Files")
     p.add_argument("--path_to_pdb_dir", type=str, help="Specify Path to directory with noncanonical PDBs \
-    (default = ./noncanonical_pdbs", default="./noncanonical_pdbs")
+    (default = ./noncanonical_pdbs)", default="./noncanonical_pdbs")
     p.add_argument("--path_to_output", type=str, help="Specify Path to output directory \
     (default = ../training_data_repo)", default="../training_data_repo")
     PARSER = p.parse_args()
@@ -331,13 +316,18 @@ def main():
     # Loop through files within the inputs
     file_pattern = os.path.join(INPUT,'*.pdb')
     files = glob.glob(file_pattern)
-    for file in files:
-        extract_pdb_info(
+    for file in tqdm(files):
+        seq_list = extract_pdb_info(
             f=file,
             to1letter=to1letter,
             aa2idx=aa2idx,
             OUTPUT=OUTPUT,
             res_names=RES_NAMES,
+        )
+        write_pt_general(
+            f=file,
+            OUTPUT=OUTPUT,
+            seq=seq_list,
         )
 
     return 0
