@@ -18,6 +18,7 @@ import itertools
 
 def featurize(batch, device):
     alphabet = 'ACDEFGHIKLMNPQRSTVWYX'
+    alphabet = alphabet + alphabet.lower()
     B = len(batch)
     lengths = np.array([len(b['seq']) for b in batch], dtype=np.int32) #sum of chain seq lengths
     L_max = max([len(b['seq']) for b in batch])
@@ -139,7 +140,9 @@ def loss_nll(S, log_probs, mask):
 
 def loss_smoothed(S, log_probs, mask, weight=0.1):
     """ Negative log probabilities """
-    S_onehot = torch.nn.functional.one_hot(S, 21).float()
+    #S_onehot = torch.nn.functional.one_hot(S, 21).float()
+    ##### CHANGED ANDREW TO FIX NEW VOCAB SIZE
+    S_onehot = torch.nn.functional.one_hot(S, 42).float()
 
     # Label smoothing
     S_onehot = S_onehot + weight / float(S_onehot.size(-1))
@@ -394,9 +397,10 @@ class ProteinFeatures(nn.Module):
 
 
 class ProteinMPNN(nn.Module):
-    def __init__(self, num_letters=21, node_features=128, edge_features=128,
+    ##### CHANGE NUM_LETTERS, vocab TO 42
+    def __init__(self, num_letters=42, node_features=128, edge_features=128,
         hidden_dim=128, num_encoder_layers=3, num_decoder_layers=3,
-        vocab=21, k_neighbors=32, augment_eps=0.1, dropout=0.1):
+        vocab=42, k_neighbors=32, augment_eps=0.1, dropout=0.1):
         super(ProteinMPNN, self).__init__()
 
         # Hyperparameters

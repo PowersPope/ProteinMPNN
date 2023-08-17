@@ -22,7 +22,8 @@ def main(args):
 
     scaler = torch.cuda.amp.GradScaler()
      
-    device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
+    device = torch.device("cuda:1" if (torch.cuda.is_available()) else "cpu")
+    print(device)
 
     base_folder = time.strftime(args.path_for_outputs, time.localtime())
 
@@ -57,7 +58,7 @@ def main(args):
     LOAD_PARAM = {'batch_size': 1,
                   'shuffle': True,
                   'pin_memory':False,
-                  'num_workers': 4}
+                  'num_workers': 1} # 4 default however I am going to change
 
    
     if args.debug:
@@ -66,6 +67,7 @@ def main(args):
         args.batch_size = 1000
 
     train, valid, test = build_training_clusters(params, args.debug)
+
      
     train_set = PDB_dataset(list(train.keys()), loader_pdb, train, params)
     train_loader = torch.utils.data.DataLoader(train_set, worker_init_fn=worker_init_fn, **LOAD_PARAM)
@@ -86,18 +88,25 @@ def main(args):
 
     if PATH:
         checkpoint = torch.load(PATH)
-        total_step = checkpoint['step'] #write total_step from the checkpoint
-        epoch = checkpoint['epoch'] #write epoch from the checkpoint
+        #total_step = checkpoint['step'] #write total_step from the checkpoint
+        #epoch = checkpoint['epoch'] #write epoch from the checkpoint
+        total_step = 0
+        epoch = 0
         model.load_state_dict(checkpoint['model_state_dict'])
     else:
         total_step = 0
         epoch = 0
 
     optimizer = get_std_opt(model.parameters(), args.hidden_dim, total_step)
+    #optimizer = torch.optim.Adam(model.parameters(), 1e-5, betas=(0.9, 0.999), 
+    #                             eps=1e-8)
 
 
-    if PATH:
-        optimizer.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    #if PATH:
+        #optimizer.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    #    print(checkpoint)
+    #    print(checkpoint.keys())
+    #    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
 
     with ProcessPoolExecutor(max_workers=12) as executor:
@@ -108,12 +117,14 @@ def main(args):
             p.put_nowait(executor.submit(get_pdbs, valid_loader, 1, args.max_protein_length, args.num_examples_per_epoch))
         pdb_dict_train = q.get().result()
         pdb_dict_valid = p.get().result()
+
        
         dataset_train = StructureDataset(pdb_dict_train, truncate=None, max_length=args.max_protein_length) 
         dataset_valid = StructureDataset(pdb_dict_valid, truncate=None, max_length=args.max_protein_length)
         
         loader_train = StructureLoader(dataset_train, batch_size=args.batch_size)
         loader_valid = StructureLoader(dataset_valid, batch_size=args.batch_size)
+
         
         reload_c = 0 
         for e in range(args.num_epochs):
@@ -152,6 +163,7 @@ def main(args):
 
                     scaler.step(optimizer)
                     scaler.update()
+                    #optimizer.step() ### ADDED
                 else:
                     log_probs = model(X, S, mask, chain_M, residue_idx, chain_encoding_all)
                     _, loss_av_smoothed = loss_smoothed(S, log_probs, mask_for_loss)
@@ -210,6 +222,7 @@ def main(args):
                         'noise_level': args.backbone_noise,
                         'model_state_dict': model.state_dict(),
                         'optimizer_state_dict': optimizer.optimizer.state_dict(),
+                        #'optimizer_state_dict': optimizer.state_dict(),
                         }, checkpoint_filename_last)
 
             if (e+1) % args.save_model_every_n_epochs == 0:
@@ -221,6 +234,7 @@ def main(args):
                         'noise_level': args.backbone_noise, 
                         'model_state_dict': model.state_dict(),
                         'optimizer_state_dict': optimizer.optimizer.state_dict(),
+                        #'optimizer_state_dict': optimizer.state_dict(),
                         }, checkpoint_filename)
 
 

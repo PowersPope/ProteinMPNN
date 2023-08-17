@@ -9,7 +9,7 @@ import os
 
 class StructureDataset():
     def __init__(self, pdb_dict_list, verbose=True, truncate=None, max_length=100,
-        alphabet='ACDEFGHIKLMNPQRSTVWYX'):
+        alphabet='ACDEFGHIKLMNPQRSTVWYXacdefghiklmnpqrstvwyx'):
         alphabet_set = set([a for a in alphabet])
         discard_count = {
             'bad_chars': 0,
@@ -228,8 +228,16 @@ class PDB_dataset(torch.utils.data.Dataset):
 
 def loader_pdb(item,params):
 
-    pdbid,chid = item[0].split('_')
-    PREFIX = "%s/pdb/%s/%s"%(params['DIR'],pdbid[1:3],pdbid)
+    if "/" in item[0]:
+        item[0] = item[0].split('/')[-1]
+        t_list = item[0].split("_")
+        chid = t_list.pop(-1)
+        chid = chid.strip(".pt")
+        pdbid = "_".join(t_list)
+        PREFIX = "%s/pdb/%s/%s"%(params['DIR'],pdbid[1:3],pdbid)
+    else:
+        pdbid,chid = item[0].split('_')
+        PREFIX = "%s/pdb/%s/%s"%(params['DIR'],pdbid[1:3],pdbid)
     
     # load metadata
     if not os.path.isfile(PREFIX+".pt"):

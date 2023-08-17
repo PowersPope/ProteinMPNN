@@ -62,7 +62,9 @@ def main(args):
     temperatures = [float(item) for item in args.sampling_temp.split()]
     omit_AAs_list = args.omit_AAs
     alphabet = 'ACDEFGHIKLMNPQRSTVWYX'
-    alphabet_dict = dict(zip(alphabet, range(21)))    
+    ##### ADDED BY ANDERW
+    alphabet = alphabet + alphabet.lower()
+    alphabet_dict = dict(zip(alphabet, range(42)))    # Changed from 21
     print_all = args.suppress_print == 0 
     omit_AAs_np = np.array([AA in omit_AAs_list for AA in alphabet]).astype(np.float32)
     device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
@@ -177,7 +179,8 @@ def main(args):
 
     checkpoint = torch.load(checkpoint_path, map_location=device) 
     noise_level_print = checkpoint['noise_level']
-    model = ProteinMPNN(ca_only=args.ca_only, num_letters=21, node_features=hidden_dim, edge_features=hidden_dim, hidden_dim=hidden_dim, num_encoder_layers=num_layers, num_decoder_layers=num_layers, augment_eps=args.backbone_noise, k_neighbors=checkpoint['num_edges'])
+    #model = ProteinMPNN(ca_only=args.ca_only, num_letters=21, node_features=hidden_dim, edge_features=hidden_dim, hidden_dim=hidden_dim, num_encoder_layers=num_layers, num_decoder_layers=num_layers, augment_eps=args.backbone_noise, k_neighbors=checkpoint['num_edges'])
+    model = ProteinMPNN(ca_only=args.ca_only, num_letters=42, node_features=hidden_dim, edge_features=hidden_dim, hidden_dim=hidden_dim, num_encoder_layers=num_layers, num_decoder_layers=num_layers, augment_eps=args.backbone_noise, k_neighbors=checkpoint['num_edges'])
     model.to(device)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
@@ -345,7 +348,8 @@ def main(args):
                             for b_ix in range(BATCH_COPIES):
                                 masked_chain_length_list = masked_chain_length_list_list[b_ix]
                                 masked_list = masked_list_list[b_ix]
-                                seq_recovery_rate = torch.sum(torch.sum(torch.nn.functional.one_hot(S[b_ix], 21)*torch.nn.functional.one_hot(S_sample[b_ix], 21),axis=-1)*mask_for_loss[b_ix])/torch.sum(mask_for_loss[b_ix])
+                                #seq_recovery_rate = torch.sum(torch.sum(torch.nn.functional.one_hot(S[b_ix], 21)*torch.nn.functional.one_hot(S_sample[b_ix], 21),axis=-1)*mask_for_loss[b_ix])/torch.sum(mask_for_loss[b_ix])
+                                seq_recovery_rate = torch.sum(torch.sum(torch.nn.functional.one_hot(S[b_ix], 42)*torch.nn.functional.one_hot(S_sample[b_ix], 42),axis=-1)*mask_for_loss[b_ix])/torch.sum(mask_for_loss[b_ix])
                                 seq = _S_to_seq(S_sample[b_ix], chain_M[b_ix])
                                 score = scores[b_ix]
                                 score_list.append(score)

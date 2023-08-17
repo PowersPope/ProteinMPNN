@@ -48,6 +48,7 @@ def _scores(S, log_probs, mask):
 
 def _S_to_seq(S, mask):
     alphabet = 'ACDEFGHIKLMNPQRSTVWYX'
+    alphabet = alphabet + alphabet.lower()
     seq = ''.join([alphabet[c] for c, m in zip(S.tolist(), mask.tolist()) if m > 0])
     return seq
 
@@ -57,11 +58,17 @@ def parse_PDB_biounits(x, atoms=['N','CA','C'], chain=None):
           atoms = atoms to extract (optional)
   output: (length, atoms, coords=(x,y,z)), sequence
   '''
-
-  alpha_1 = list("ARNDCQEGHILKMFPSTWYV-")
+  alphabet = "ARNDCQEGHILKMFPSTWYV"
+  alphabet = alphabet + alphabet.lower()
+  #alpha_1 = list("ARNDCQEGHILKMFPSTWYV-")
+  alpha_1 = list(alphabet+"-")
   states = len(alpha_1)
+  # Update to include D amino acids
   alpha_3 = ['ALA','ARG','ASN','ASP','CYS','GLN','GLU','GLY','HIS','ILE',
-             'LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL','GAP']
+             'LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL',
+             'DAL','DAR','DAN','DAS','DCY','DGN','DGU','GLY','DHI','DIL',
+             'DLE','DLY','DME','DPH','DPR','DSE','DTH','DTR','DTY','DVA',
+             'GAP']
   
   aa_1_N = {a:n for n,a in enumerate(alpha_1)}
   aa_3_N = {a:n for n,a in enumerate(alpha_3)}
@@ -89,7 +96,7 @@ def parse_PDB_biounits(x, atoms=['N','CA','C'], chain=None):
       line = line.replace("HETATM","ATOM  ")
       line = line.replace("MSE","MET")
 
-    if line[:4] == "ATOM":
+    if line[:4] == "ATOM" or line[:4] == "HETA":
       ch = line[21:22]
       if ch == chain or chain is None:
         atom = line[12:12+4].strip()
@@ -123,8 +130,10 @@ def parse_PDB_biounits(x, atoms=['N','CA','C'], chain=None):
   try:
       for resn in range(min_resn,max_resn+1):
         if resn in seq:
-          for k in sorted(seq[resn]): seq_.append(aa_3_N.get(seq[resn][k],20))
-        else: seq_.append(20)
+       #   for k in sorted(seq[resn]): seq_.append(aa_3_N.get(seq[resn][k],20))
+       # else: seq_.append(20)
+          for k in sorted(seq[resn]): seq_.append(aa_3_N.get(seq[resn][k],40))
+        else: seq_.append(40)
         if resn in xyz:
           for k in sorted(xyz[resn]):
             for atom in atoms:
@@ -191,6 +200,7 @@ def parse_PDB(path_to_pdb, input_chain_list=None, ca_only=False):
 def tied_featurize(batch, device, chain_dict, fixed_position_dict=None, omit_AA_dict=None, tied_positions_dict=None, pssm_dict=None, bias_by_res_dict=None, ca_only=False):
     """ Pack and pad batch into torch tensors """
     alphabet = 'ACDEFGHIKLMNPQRSTVWYX'
+    alphabet = alphabet + alphabet.lower()
     B = len(batch)
     lengths = np.array([len(b['seq']) for b in batch], dtype=np.int32) #sum of chain seq lengths
     L_max = max([len(b['seq']) for b in batch])
@@ -201,10 +211,13 @@ def tied_featurize(batch, device, chain_dict, fixed_position_dict=None, omit_AA_
     residue_idx = -100*np.ones([B, L_max], dtype=np.int32)
     chain_M = np.zeros([B, L_max], dtype=np.int32) #1.0 for the bits that need to be predicted
     pssm_coef_all = np.zeros([B, L_max], dtype=np.float32) #1.0 for the bits that need to be predicted
-    pssm_bias_all = np.zeros([B, L_max, 21], dtype=np.float32) #1.0 for the bits that need to be predicted
-    pssm_log_odds_all = 10000.0*np.ones([B, L_max, 21], dtype=np.float32) #1.0 for the bits that need to be predicted
+    pssm_bias_all = np.zeros([B, L_max, 42], dtype=np.float32) #1.0 for the bits that need to be predicted
+    pssm_log_odds_all = 10000.0*np.ones([B, L_max, 42], dtype=np.float32) #1.0 for the bits that need to be predicted
+    #pssm_bias_all = np.zeros([B, L_max, 21], dtype=np.float32) #1.0 for the bits that need to be predicted
+    #pssm_log_odds_all = 10000.0*np.ones([B, L_max, 21], dtype=np.float32) #1.0 for the bits that need to be predicted
     chain_M_pos = np.zeros([B, L_max], dtype=np.int32) #1.0 for the bits that need to be predicted
-    bias_by_res_all = np.zeros([B, L_max, 21], dtype=np.float32)
+    #bias_by_res_all = np.zeros([B, L_max, 21], dtype=np.float32)
+    bias_by_res_all = np.zeros([B, L_max, 42], dtype=np.float32)
     chain_encoding_all = np.zeros([B, L_max], dtype=np.int32) #1.0 for the bits that need to be predicted
     S = np.zeros([B, L_max], dtype=np.int32)
     omit_AA_mask = np.zeros([B, L_max, len(alphabet)], dtype=np.int32)
@@ -273,12 +286,15 @@ def tied_featurize(batch, device, chain_dict, fixed_position_dict=None, omit_AA_
                 omit_AA_mask_temp = np.zeros([chain_length, len(alphabet)], np.int32)
                 omit_AA_mask_list.append(omit_AA_mask_temp)
                 pssm_coef = np.zeros(chain_length)
-                pssm_bias = np.zeros([chain_length, 21])
-                pssm_log_odds = 10000.0*np.ones([chain_length, 21])
+                pssm_bias = np.zeros([chain_length, 42])
+                pssm_log_odds = 10000.0*np.ones([chain_length, 42])
+                #pssm_bias = np.zeros([chain_length, 21])
+                #pssm_log_odds = 10000.0*np.ones([chain_length, 21])
                 pssm_coef_list.append(pssm_coef)
                 pssm_bias_list.append(pssm_bias)
                 pssm_log_odds_list.append(pssm_log_odds)
-                bias_by_res_list.append(np.zeros([chain_length, 21]))
+                #bias_by_res_list.append(np.zeros([chain_length, 21]))
+                bias_by_res_list.append(np.zeros([chain_length, 42]))
             if letter in masked_chains:
                 masked_list.append(letter)
                 letter_list.append(letter)
@@ -318,8 +334,10 @@ def tied_featurize(batch, device, chain_dict, fixed_position_dict=None, omit_AA_
                         omit_AA_mask_temp[idx_[:,0], idx_[:,1]] = 1
                 omit_AA_mask_list.append(omit_AA_mask_temp)
                 pssm_coef = np.zeros(chain_length)
-                pssm_bias = np.zeros([chain_length, 21])
-                pssm_log_odds = 10000.0*np.ones([chain_length, 21])
+                #pssm_bias = np.zeros([chain_length, 21])
+                #pssm_log_odds = 10000.0*np.ones([chain_length, 21])
+                pssm_bias = np.zeros([chain_length, 42])
+                pssm_log_odds = 10000.0*np.ones([chain_length, 42])
                 if pssm_dict:
                     if pssm_dict[b['name']][letter]:
                         pssm_coef = pssm_dict[b['name']][letter]['pssm_coef']
@@ -331,7 +349,8 @@ def tied_featurize(batch, device, chain_dict, fixed_position_dict=None, omit_AA_
                 if bias_by_res_dict:
                     bias_by_res_list.append(bias_by_res_dict[b['name']][letter])
                 else:
-                    bias_by_res_list.append(np.zeros([chain_length, 21]))
+                    #bias_by_res_list.append(np.zeros([chain_length, 21]))
+                    bias_by_res_list.append(np.zeros([chain_length, 42]))
 
        
         letter_list_np = np.array(letter_list)
@@ -449,7 +468,8 @@ def loss_nll(S, log_probs, mask):
 
 def loss_smoothed(S, log_probs, mask, weight=0.1):
     """ Negative log probabilities """
-    S_onehot = torch.nn.functional.one_hot(S, 21).float()
+    #S_onehot = torch.nn.functional.one_hot(S, 21).float()
+    S_onehot = torch.nn.functional.one_hot(S, 42).float()
 
     # Label smoothing
     S_onehot = S_onehot + weight / float(S_onehot.size(-1))
@@ -461,7 +481,7 @@ def loss_smoothed(S, log_probs, mask, weight=0.1):
 
 class StructureDataset():
     def __init__(self, jsonl_file, verbose=True, truncate=None, max_length=100,
-        alphabet='ACDEFGHIKLMNPQRSTVWYX-'):
+        alphabet='ACDEFGHIKLMNPQRSTVWYXacdefghiklmnpqrstvwyx-'):
         alphabet_set = set([a for a in alphabet])
         discard_count = {
             'bad_chars': 0,
@@ -516,7 +536,7 @@ class StructureDataset():
 
 class StructureDatasetPDB():
     def __init__(self, pdb_dict_list, verbose=True, truncate=None, max_length=100,
-        alphabet='ACDEFGHIKLMNPQRSTVWYX-'):
+        alphabet='ACDEFGHIKLMNPQRSTVWYXacdefghiklmnpqrstvwyx-'):
         alphabet_set = set([a for a in alphabet])
         discard_count = {
             'bad_chars': 0,
@@ -1017,9 +1037,10 @@ class ProteinFeatures(nn.Module):
 
 
 class ProteinMPNN(nn.Module):
+    # ADDED 42 for vocab from 21
     def __init__(self, num_letters, node_features, edge_features,
         hidden_dim, num_encoder_layers=3, num_decoder_layers=3,
-        vocab=21, k_neighbors=64, augment_eps=0.05, dropout=0.1, ca_only=False):
+        vocab=42, k_neighbors=64, augment_eps=0.05, dropout=0.1, ca_only=False):
         super(ProteinMPNN, self).__init__()
 
         # Hyperparameters
@@ -1126,8 +1147,10 @@ class ProteinMPNN(nn.Module):
         mask_fw = mask_1D * (1. - mask_attend)
 
         N_batch, N_nodes = X.size(0), X.size(1)
-        log_probs = torch.zeros((N_batch, N_nodes, 21), device=device)
-        all_probs = torch.zeros((N_batch, N_nodes, 21), device=device, dtype=torch.float32)
+        #log_probs = torch.zeros((N_batch, N_nodes, 21), device=device)
+        #all_probs = torch.zeros((N_batch, N_nodes, 21), device=device, dtype=torch.float32)
+        log_probs = torch.zeros((N_batch, N_nodes, 42), device=device)
+        all_probs = torch.zeros((N_batch, N_nodes, 42), device=device, dtype=torch.float32)
         h_S = torch.zeros_like(h_V, device=device)
         S = torch.zeros((N_batch, N_nodes), dtype=torch.int64, device=device)
         h_V_stack = [h_V] + [torch.zeros_like(h_V, device=device) for _ in range(len(self.decoder_layers))]
@@ -1144,7 +1167,8 @@ class ProteinMPNN(nn.Module):
             t = decoding_order[:,t_] #[B]
             chain_mask_gathered = torch.gather(chain_mask, 1, t[:,None]) #[B]
             mask_gathered = torch.gather(mask, 1, t[:,None]) #[B]
-            bias_by_res_gathered = torch.gather(bias_by_res, 1, t[:,None,None].repeat(1,1,21))[:,0,:] #[B, 21]
+            #bias_by_res_gathered = torch.gather(bias_by_res, 1, t[:,None,None].repeat(1,1,21))[:,0,:] #[B, 21]
+            bias_by_res_gathered = torch.gather(bias_by_res, 1, t[:,None,None].repeat(1,1,42))[:,0,:] #[B, 21]
             if (mask_gathered==0).all(): #for padded or missing regions only
                 S_t = torch.gather(S_true, 1, t[:,None])
             else:
@@ -1316,7 +1340,8 @@ class ProteinMPNN(nn.Module):
   
         chain_M_np = chain_M.cpu().numpy()
         idx_to_loop = np.argwhere(chain_M_np[0,:]==1)[:,0]
-        log_conditional_probs = torch.zeros([X.shape[0], chain_M.shape[1], 21], device=device).float()
+        #log_conditional_probs = torch.zeros([X.shape[0], chain_M.shape[1], 21], device=device).float()
+        log_conditional_probs = torch.zeros([X.shape[0], chain_M.shape[1], 42], device=device).float()
 
         for idx in idx_to_loop:
             h_V = torch.clone(h_V_enc)
