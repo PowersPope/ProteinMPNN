@@ -11,6 +11,8 @@ import subprocess
 from biopandas.pdb import PandasPdb
 import pandas as pd
 import argparse
+import random
+from string import digits
 from typing import List
 from tqdm import tqdm
 
@@ -99,7 +101,7 @@ def extract_pdb_info(f:str,
         # Get rid of waters
         # temp = temp[temp.residue_name != 'HOH']
         temp = temp[temp.residue_name.isin(res_names)]
-        
+
         # extract sequence info by eliminating multiple residue number occurences
         temp_unique = temp.drop_duplicates(subset="residue_number",
                                            keep="first")
@@ -164,13 +166,18 @@ def extract_pdb_info(f:str,
         keys = ['seq', 'xyz', 'mask', 'bfac', 'occ']
         vals = [seq, xyz, mask, bfac, occupancy]
         out_dict = dict(zip(keys, vals))
-        
-        torch.save(out_dict, f"{OUT}_{id}.pt")
+
+        # out name file
+        out_file = f"{OUT}_{id}.pt"
+
+        # Write out chain.pt 
+        torch.save(out_dict, out_file)
+
 
         # Add seq to seq_all
         seq_all.append(seq)
 
-    return seq_all
+    return seq_all, out_file
 
 def write_pt_general(f: object, OUTPUT:str, seq:list) -> int:
     """Write out the general generic monomeric .pt file for training
@@ -185,7 +192,7 @@ def write_pt_general(f: object, OUTPUT:str, seq:list) -> int:
 
     seq: list
         list of one letter string of AAs in the peptide.
-        This works as an input, because the 
+        This works as an input, because the
 
     RETURNS
     -------
@@ -225,11 +232,10 @@ def write_pt_general(f: object, OUTPUT:str, seq:list) -> int:
     torch.save(contents, OUT)
 
     return 0
-    
 
 def main():
     """Main function that cycles through a pdb input dir and returns .pt
-    files for each of them in the correct orientation of the .pt files 
+    files for each of them in the correct orientation of the .pt files
     needed to train the model."""
 
     # Define argument parser
@@ -306,18 +312,34 @@ def main():
         ("N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ", "OH"), # tyr
         ("N", "CA", "C", "O", "CB", "CG1", "CG2") # val
     ]
-            
+
     idx2ra = {(RES_NAMES_TOTAL[i],j):(RES_NAMES[i],a) for i in range(40) for j,a in enumerate(ATOM_NAMES[i])} # Change to 40, since D added
 
-    aa2idx = {(r,a):i for r,atoms in zip(RES_NAMES,ATOM_NAMES) 
+    aa2idx = {(r,a):i for r,atoms in zip(RES_NAMES,ATOM_NAMES)
               for i,a in enumerate(atoms)}
     aa2idx.update({(r,'OXT'):3 for r in RES_NAMES})
+
+    # Header for list.csv
+    HEADER = "CHAINID,DEPOSITION,RESOLUTION,HASH,CLUSTER,SEQUENCE"
+
+    # Specify up 2 directories for output
+    CSVOUT = "/".join(OUTPUT.split('/')[:-2])
+    print(OUTPUT)
+    print(CSVOUT)
+
+    # open training files
+    list_csv_file = open(os.path.join(CSVOUT,'list.csv'), 'w')
+    valid_file = open(os.path.join(CSVOUT,'valid_clusters.txt'), 'w')
+    test_file = open(os.path.join(CSVOUT,'test_clusters.txt'), 'w')
+
+    # Write header to file
+    print(HEADER, file=list_csv_file)
 
     # Loop through files within the inputs
     file_pattern = os.path.join(INPUT,'*.pdb')
     files = glob.glob(file_pattern)
     for file in tqdm(files):
-        seq_list = extract_pdb_info(
+        seq_list, chain_id = extract_pdb_info(
             f=file,
             to1letter=to1letter,
             aa2idx=aa2idx,
@@ -329,6 +351,27 @@ def main():
             OUTPUT=OUTPUT,
             seq=seq_list,
         )
+
+        # Variables for list and cluster files
+        hash_out = ''.join(random.choice(digits) for i in range(6))
+        cluster_out = ''.join(random.choice(digits) for i in range(6))
+
+        # Write out info to list.csv
+        list_out = f"{chain_id},2023-08-16,0.0,{hash_out},{cluster_out},{seq_list[0]}"
+        print(list_out, file=list_csv_file)
+
+        # Write to test or validate
+        # 20% of the time write to test or validate
+        if np.random.choice([0,1], p=[0.8, 0.2], size=1):
+            if np.random.choice([0,1], p=[0.5,0.5], size=1):
+                print(cluster_out, file=valid_file)
+            else:
+                print(cluster_out, file=test_file)
+
+    # Close files
+    list_csv_file.close()
+    valid_file.close()
+    test_file.close()
 
     return 0
 
