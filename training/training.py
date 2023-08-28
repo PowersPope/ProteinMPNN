@@ -9,6 +9,7 @@ def main(args):
     import torch
     from torch import optim
     from torch.utils.data import DataLoader
+    import datetime
     import queue
     import copy
     import torch.nn as nn
@@ -22,7 +23,7 @@ def main(args):
 
     scaler = torch.cuda.amp.GradScaler()
      
-    device = torch.device("cuda:1" if (torch.cuda.is_available()) else "cpu")
+    device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
     print(device)
 
     base_folder = time.strftime(args.path_for_outputs, time.localtime())
@@ -108,6 +109,36 @@ def main(args):
     #    print(checkpoint.keys())
     #    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
+    # write current results to .md file for tracking
+    #md_file_out = os.path.join(args.path_to_output_dir, "results.md")
+    md_file_out = "./results.md"
+    file_exists = os.path.exists(md_file_out)
+
+    # Check if file exists or not
+    if file_exists:
+        with open(md_file_out, 'a') as f:
+            print('new_overwrite_entry', file=f)
+    else:
+        md_file_out_open = open(md_file_out, 'w')
+        md_header = "|OutputDir|Epoch|Train Loss|Validation Loss|Train Accuracy|Validation Accuracy|Date|Step|KNN|Batch Size|Dropout|BackboneNoise|EncoderLayers|DecoderLayers|HiddenSize|MaxProteinLength|"
+        md_sep = "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+        md_place_holder = "blah"
+        print(md_header, file=md_file_out_open)
+        print(md_sep, file=md_file_out_open)
+        print(md_place_holder, file=md_file_out_open)
+        md_file_out_open.close()
+
+    ### Writing file
+    def overwrite_line(filename, line_number, new_content):
+        with open(filename, 'r') as file:
+            lines = file.readlines()
+
+        lines[line_number] = new_content + '\n'
+
+        with open(filename, 'w') as file:
+            file.writelines(lines)
+
+
 
     with ProcessPoolExecutor(max_workers=12) as executor:
         q = queue.Queue(maxsize=3)
@@ -121,7 +152,8 @@ def main(args):
        
         dataset_train = StructureDataset(pdb_dict_train, truncate=None, max_length=args.max_protein_length) 
         dataset_valid = StructureDataset(pdb_dict_valid, truncate=None, max_length=args.max_protein_length)
-        
+
+
         loader_train = StructureLoader(dataset_train, batch_size=args.batch_size)
         loader_valid = StructureLoader(dataset_valid, batch_size=args.batch_size)
 
@@ -213,6 +245,10 @@ def main(args):
             with open(logfile, 'a') as f:
                 f.write(f'epoch: {e+1}, step: {total_step}, time: {dt}, train: {train_perplexity_}, valid: {validation_perplexity_}, train_acc: {train_accuracy_}, valid_acc: {validation_accuracy_}\n')
             print(f'epoch: {e+1}, step: {total_step}, time: {dt}, train: {train_perplexity_}, valid: {validation_perplexity_}, train_acc: {train_accuracy_}, valid_acc: {validation_accuracy_}')
+
+            md_out = f"|{args.path_for_outputs}|{e+1}|{train_perplexity_}|{validation_perplexity_}|{train_accuracy_}|{validation_accuracy_}|{str(datetime.date.today())}|{total_step}|{args.num_neighbors}|{args.batch_size}|{args.dropout}|{args.backbone_noise}|{args.num_encoder_layers}|{args.num_decoder_layers}|{args.hidden_dim}|{args.max_protein_length}|"
+            overwrite_line(md_file_out, -1, md_out)
+
             
             checkpoint_filename_last = base_folder+'model_weights/epoch_last.pt'.format(e+1, total_step)
             torch.save({
