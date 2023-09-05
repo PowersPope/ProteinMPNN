@@ -93,10 +93,26 @@ def extract_pdb_info(f:str,
     # extra chain information
     chids = set(df_cat.chain_id)
 
+    # mirror reflect the peptide
+    reflect_xyz = reflect_residue(df_cat)
+
+    # create mirror_data
+    mirror_atom_df = pd.DataFrame(
+	{
+            'x_coord_mirror': reflect_xyz[:,0],
+            'y_coord_mirror': reflect_xyz[:,1],
+            'z_coord_mirror': reflect_xyz[:,2],
+        }
+    )
+
+    # make into pandas dataframe
+    out_df = pd.concat([df_cat, mirror_atom_df], axis=1)
+
     # loop through chids
     for id in chids:
         # extract out id
-        temp = df_cat[df_cat.chain_id == id]
+        #temp = df_cat[df_cat.chain_id == id]
+        temp = out_df[out_df.chain_id == id]
 
         # Get rid of waters
         # temp = temp[temp.residue_name != 'HOH']
@@ -110,6 +126,9 @@ def extract_pdb_info(f:str,
         seq = "".join(
             [to1letter["GLY"] if aaa not in to1letter.keys() else to1letter[aaa] for aaa in temp_unique.residue_name]
         )
+
+	# inverse the sequence
+        inv_seq = gen_seq(seq)
 
         # If this chain has nothing but elements/unknown current noncanonicals then pass
         if seq == "":
@@ -126,6 +145,7 @@ def extract_pdb_info(f:str,
 
         # init xyz and occupancy
         xyz = torch.zeros((L,14,3)) #(L, Atom, XYZ)
+        mirror_xyz = torch.zeros((L,14,3)) #(L, Atom, XYZ)
         occupancy = torch.zeros((L,14)) #(L, Atom)
         mask = torch.zeros((L,14)) #(L, Atom)
 
@@ -149,6 +169,10 @@ def extract_pdb_info(f:str,
             xyz[ctr, aa2idx[key], 0] = row.x_coord
             xyz[ctr, aa2idx[key], 1] = row.y_coord
             xyz[ctr, aa2idx[key], 2] = row.z_coord
+            # Extract mirror positional information
+            mirror_xyz[ctr, aa2idx[key], 0] = row.x_coord_mirror
+            mirror_xyz[ctr, aa2idx[key], 1] = row.y_coord_mirror
+            mirror_xyz[ctr, aa2idx[key], 2] = row.z_coord_mirror
             # Extract occupancy
             occupancy[ctr, aa2idx[key]] = row.occupancy
             # Attend to info
@@ -161,23 +185,101 @@ def extract_pdb_info(f:str,
 
         # Write data
         OUT = os.path.join(OUTPUT,filename)
+        OUT2 = os.path.join(OUTPUT,filename+"_rev")
 
         # create dict to write
         keys = ['seq', 'xyz', 'mask', 'bfac', 'occ']
         vals = [seq, xyz, mask, bfac, occupancy]
         out_dict = dict(zip(keys, vals))
 
+	# Create inverse out
+        vals_mirror = [inv_seq, mirror_xyz, mask, bfac, occupancy]
+        out_dict_mirror = dict(zip(keys, vals_mirror))
+
         # out name file
         out_file = f"{OUT}_{id}.pt"
+        out_file2 = f"{OUT2}_{id}.pt"
 
         # Write out chain.pt 
         torch.save(out_dict, out_file)
-
+        torch.save(out_dict_mirror, out_file2)
 
         # Add seq to seq_all
         seq_all.append(seq)
+        seq_all.append(inv_seq)
 
-    return seq_all, out_file
+    return seq_all, out_file, out_file2
+
+def gen_seq(seq: str)-> list:
+    """Take in a column of sequences and return the lower/upper inverse
+    sequences
+
+    PARAMETERS
+    ----------
+    seq: str
+        string of cyclic peptide sequences
+        Ex (aAWFNPDg)
+
+    RETURNS
+    -------
+    inverse_seq: str
+        string of inverse cyclic peptide sequences
+        compared to the input.
+        Ex (AawfnpdG)
+    """
+# create inverse seq
+    inverse_seq = ''.join([x.upper() if x.islower() else x.lower() for x in seq])
+
+# get rid of artifact
+    inverse_seq = inverse_seq.replace('g', "G")
+
+    return inverse_seq
+
+def reflect_residue(input_df: pd.DataFrame) -> np.array:
+    """Take in a dataframe from biopandas. Go through each residue grab its 
+    N and CA coordinates compute their reflection planes. Apply the reflection
+    to the other coordinates
+
+    PARAMETERS
+    ----------
+    input_df: pd.DataFrame
+        The sorted biopandas df that inlcudes residue_number and x,y,z coords
+
+    RETURNS
+    -------
+    relfect_xyz: np.array
+        Reflected D/L coordinates
+    """
+#### TRYING TO REFLECT ALL
+# extract the coordinates
+    coords = input_df.loc[:, ['x_coord', 'y_coord', 'z_coord']].to_numpy(dtype=np.float32)
+
+# reflect coords
+    reflect_xyz = reflect_through_plane(coords)
+
+    return reflect_xyz
+
+def reflect_through_plane(atom_coords):
+# specify plane
+    plane_normal = np.array([1., 0., 0.])
+
+# calculate the centroid
+    centroid = np.mean(atom_coords, axis=0)
+
+# specify a place far away from the centroid
+    reflection_distance = 10.0
+    plane_origin = centroid - plane_normal * reflection_distance
+
+# Normalize Plane
+    plane_normal = plane_normal / np.linalg.norm(plane_normal)
+
+    vector_to_atoms = atom_coords - plane_origin
+    perpendicular_components = np.dot(vector_to_atoms, plane_normal)[:, np.newaxis] * plane_normal
+    parallel_components = vector_to_atoms - perpendicular_components
+    reflected_perpendiculars = -perpendicular_components
+    reflected_coords = parallel_components + reflected_perpendiculars + plane_origin
+
+    return reflected_coords
 
 def write_pt_general(f: object, OUTPUT:str, seq:list) -> int:
     """Write out the general generic monomeric .pt file for training
@@ -204,10 +306,12 @@ def write_pt_general(f: object, OUTPUT:str, seq:list) -> int:
 
     # Combine output and filename to create out name
     OUT = os.path.join(OUTPUT, filename+".pt")
+    OUT2 = os.path.join(OUTPUT, filename+"_rev"+".pt")
 
     # correct seq input
-    if len(seq) == 1:
-        seq = [[seq[0], seq[0]]]
+    #if len(seq) == 1:
+    seq = [[seq[0], seq[0]]]
+    seq2 = [[seq[-1], seq[-1]]]
 
     # Specify hard code contents
     contents = {
@@ -227,9 +331,27 @@ def write_pt_general(f: object, OUTPUT:str, seq:list) -> int:
                  [0., 0., 0., 1.]]]),
         'tm': torch.tensor([[[1., 1., 0.]]])
     }
+    contents2 = {
+        'method': 'IN-SILICO',
+        'date': '2023-08-16',
+        'resolution': None,
+        'chains': ['A'],
+        'seq': seq2,
+        'id': filename+"_rev",
+        'asmb_chains': ['A'],
+        'asmb_details': ['author_defined_assembly'],
+        'asmb_method': ['?'],
+        'asmb_ids': ['1'],
+        'asmb_xform0': torch.tensor([[[1., 0., 0., 0.],
+                 [0., 1., 0., 0.],
+                 [0., 0., 1., 0.],
+                 [0., 0., 0., 1.]]]),
+        'tm': torch.tensor([[[1., 1., 0.]]])
+    }
 
     # write to .pt
     torch.save(contents, OUT)
+    torch.save(contents2, OUT2)
 
     return 0
 
@@ -264,6 +386,7 @@ def main():
     RES_NAMES_1 = 'ARNDCQEGHILKMFPSTWYV' # L 
     RES_NAMES_2 = RES_NAMES_1.lower() # D version
     RES_NAMES_TOTAL = RES_NAMES_1 + RES_NAMES_2 # Combine into one string
+    RES_NAMES_TOTAL.replace('g', 'G')
 
     # generate Dictionaries for 1 to three and three to 1 conversion
     to1letter = {aaa:a for a,aaa in zip(RES_NAMES_TOTAL,RES_NAMES)}
@@ -339,7 +462,7 @@ def main():
     file_pattern = os.path.join(INPUT,'*.pdb')
     files = glob.glob(file_pattern)
     for file in tqdm(files):
-        seq_list, chain_id = extract_pdb_info(
+        seq_list, chain_id, chain_id_rev = extract_pdb_info(
             f=file,
             to1letter=to1letter,
             aa2idx=aa2idx,
@@ -355,10 +478,14 @@ def main():
         # Variables for list and cluster files
         hash_out = ''.join(random.choice(digits) for i in range(6))
         cluster_out = ''.join(random.choice(digits) for i in range(6))
+        hash_out2 = ''.join(random.choice(digits) for i in range(6))
+        cluster_out2 = ''.join(random.choice(digits) for i in range(6))
 
         # Write out info to list.csv
         list_out = f"{chain_id},2023-08-16,0.0,{hash_out},{cluster_out},{seq_list[0]}"
+        list_out2 = f"{chain_id_rev},2023-08-16,0.0,{hash_out2},{cluster_out2},{seq_list[-1]}"
         print(list_out, file=list_csv_file)
+        print(list_out2, file=list_csv_file)
 
         # Write to test or validate
         # 20% of the time write to test or validate
@@ -367,6 +494,12 @@ def main():
                 print(cluster_out, file=valid_file)
             else:
                 print(cluster_out, file=test_file)
+        # 20% of the time write to test or validate
+        if np.random.choice([0,1], p=[0.8, 0.2], size=1):
+            if np.random.choice([0,1], p=[0.5,0.5], size=1):
+                print(cluster_out2, file=valid_file)
+            else:
+                print(cluster_out2, file=test_file)
 
     # Close files
     list_csv_file.close()
