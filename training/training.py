@@ -93,7 +93,7 @@ def main(args):
         #epoch = checkpoint['epoch'] #write epoch from the checkpoint
         total_step = 0
         epoch = 0
-        model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     else:
         total_step = 0
         epoch = 0

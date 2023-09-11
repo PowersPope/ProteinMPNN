@@ -179,6 +179,7 @@ def extract_pdb_info(f:str,
             mask[ctr, aa2idx[key]] = 1.0
         # Reformat the 0.0s to nans like how they have originally
         xyz = torch.where(xyz == 0., float('nan'), xyz)
+        mirror_xyz = torch.where(mirror_xyz == 0., float('nan'), mirror_xyz)
         # Create bfac 
         bfac = torch.where(mask==0., float('nan'), mask)
         bfac = torch.where(bfac==1., float(0.), bfac)

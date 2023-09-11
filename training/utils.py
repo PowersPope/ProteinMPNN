@@ -362,3 +362,70 @@ def build_training_clusters(params, debug):
     if debug:
         valid=train       
     return train, valid, test
+
+
+def gen_seq(seq: str)-> list:
+    """Take in a column of sequences and return the lower/upper inverse
+    sequences
+
+    PARAMETERS
+    ----------
+    seq: str
+        string of cyclic peptide sequences
+        Ex (aAWFNPDg)
+
+    RETURNS
+    -------
+    inverse_seq: str
+        string of inverse cyclic peptide sequences
+        compared to the input.
+        Ex (AawfnpdG)
+    """
+# create inverse seq
+    inverse_seq = ''.join([x.upper() if x.islower() else x.lower() for x in seq])
+
+# get rid of artifact
+    inverse_seq = inverse_seq.replace('g', "G")
+
+    return inverse_seq
+
+def reflect_through_plane(atom_coords):
+    assert len(atom_coords.shape) == 2, "Reshape the tensor so that it is a 2d-matrix"
+
+    # specify plane
+    plane_normal = np.array([1., 0., 0.])
+
+    # If nan in array
+    nan_check = True if np.isnan(atom_coords).sum() >= 1 else False
+    if nan_check:
+        # Grab nan indicies
+        nan_mask = np.isnan(atom_coords).any(axis=1)
+
+        # Get the row indices where NaN values are present
+        row_indices_with_nan = np.where(nan_mask)[0]
+
+        # atom_coords remove nans
+        atom_coords = torch.tensor(np.nan_to_num(atom_coords))
+
+    # calculate the centroid
+    centroid = np.mean(atom_coords.numpy(), axis=0)
+
+    # specify a place far away from the centroid
+    reflection_distance = 10.0
+    plane_origin = centroid - plane_normal * reflection_distance
+
+    # Normalize Plane
+    plane_normal = plane_normal / np.linalg.norm(plane_normal)
+
+    vector_to_atoms = atom_coords - plane_origin
+    perpendicular_components = np.dot(vector_to_atoms, plane_normal)[:, np.newaxis] * plane_normal
+    parallel_components = vector_to_atoms - perpendicular_components
+    reflected_perpendiculars = -perpendicular_components
+    reflected_coords = parallel_components + reflected_perpendiculars + plane_origin
+
+    if nan_check:
+        bool_mask = np.zeros(atom_coords.shape[0], dtype=bool)
+        bool_mask[row_indices_with_nan] = True
+        reflected_coords[bool_mask] = np.nan
+
+    return reflected_coords
